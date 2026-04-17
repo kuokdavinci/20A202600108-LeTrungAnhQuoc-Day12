@@ -31,11 +31,17 @@ _in_flight_requests = 0
 
 # ── Redis Connection
 try:
-    r = redis.from_url(settings.redis_url, decode_responses=True)
-    r.ping()
-    logger.info("✅ Connected to Redis")
+    # Thêm timeout ngắn để không làm treo hế thống khi khởi động
+    r = redis.from_url(
+        settings.redis_url, 
+        decode_responses=True,
+        socket_connect_timeout=5,
+        socket_timeout=5
+    )
+    # Không ping ngay tại level module, để vào trong lifespan hoặc endpoint
+    logger.info("Attempting Redis connection...")
 except Exception as e:
-    logger.error(f"❌ Redis connection failed: {e}")
+    logger.error(f"❌ Redis configuration error: {e}")
     r = None
 
 # ── Auth (JWT) Setup
@@ -63,6 +69,15 @@ class LoginRequest(BaseModel):
 async def lifespan(app: FastAPI):
     global _is_ready
     logger.info(f"Agent starting up (Env: {settings.environment})")
+    
+    # Kiểm tra Redis tại đây thay vì level module
+    try:
+        if r:
+            r.ping()
+            logger.info("✅ Connected to Redis")
+    except Exception as e:
+        logger.warning(f"⚠️ Redis ping failed: {e}. App will work in limited mode.")
+
     time.sleep(0.5)
     _is_ready = True
     yield
