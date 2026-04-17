@@ -118,10 +118,15 @@ def check_rate_limit(user_key: str):
     try:
         key = f"rate_limit:{user_key}"
         count = r.incr(key)
+        # Tăng thời hạn expire lên 60s để dễ test
         if count == 1: r.expire(key, 60)
-        if count > settings.rate_limit_per_minute:
-            raise HTTPException(status_code=429, detail="Rate limit exceeded")
-    except redis.exceptions.RedisError as e:
+        logger.info(f"Rate limit trace: {user_key} - count: {count}/5")
+        
+        if count > 5: # Giảm xuống 5 để test nhanh
+            raise HTTPException(status_code=429, detail="Rate limit exceeded (5 req/min)")
+    except HTTPException:
+        raise
+    except Exception as e:
         logger.warning(f"Rate limit check bypassed due to Redis error: {e}")
 
 def check_cost_guard(user_id: str, cost: float):
