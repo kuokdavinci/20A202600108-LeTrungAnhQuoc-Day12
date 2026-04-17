@@ -1,27 +1,17 @@
 """
-BASIC — Health Check + Graceful Shutdown
+BASIC — Health Check + Graceful Shutdown + Stateless (Redis)
 
 Hai tính năng tối thiểu cần có trước khi deploy:
   1. GET /health  — liveness: "agent có còn sống không?"
   2. GET /ready   — readiness: "agent có sẵn sàng nhận request chưa?"
   3. Graceful shutdown: hoàn thành request hiện tại trước khi tắt
-
-Chạy:
-    python app.py
-
-Test health check:
-    curl http://localhost:8000/health
-    curl http://localhost:8000/ready
-
-Simulate shutdown:
-    # Trong terminal khác
-    kill -SIGTERM <pid>
-    # Xem agent log graceful shutdown message
+  4. Stateless: Lưu conversation history vào Redis
 """
 import os
 import time
 import signal
 import logging
+import json
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 
@@ -36,6 +26,17 @@ logger = logging.getLogger(__name__)
 START_TIME = time.time()
 _is_ready = False
 _in_flight_requests = 0  # đếm số request đang xử lý
+
+# ── Redis (Stateless-ready)
+try:
+    import redis
+    _redis = redis.Redis(host="localhost", port=6379, decode_responses=True)
+    _redis.ping()
+    USE_REDIS = True
+    logger.info("✅ Connected to Redis")
+except Exception:
+    USE_REDIS = False
+    logger.warning("⚠️ Redis not available - falling back to memory (not stateless!)")
 
 
 @asynccontextmanager
@@ -87,84 +88,59 @@ async def track_requests(request, call_next):
 
 @app.get("/")
 def root():
-    return {"message": "AI Agent with health checks!"}
+    return {"message": "AI Agent with health checks!", "stateless": USE_REDIS}
 
 
 @app.post("/ask")
-async def ask_agent(question: str):
+async def ask_agent(question: str, user_id: str = "default_user"):
     if not _is_ready:
         raise HTTPException(503, "Agent not ready")
-    return {"answer": ask(question)}
+    
+    # 1. Lấy lịch sử từ Redis (hoặc memory)
+    if USE_REDIS:
+        history = _redis.lrange(f"history:{user_id}", 0, -1)
+    else:
+        history = [] # Fallback đơn giản
+
+    # 2. Gọi LLM
+    answer = ask(question)
+
+    # 3. Lưu tin nhắn mới vào Redis
+    if USE_REDIS:
+        _redis.rpush(f"history:{user_id}", f"User: {question}", f"AI: {answer}")
+        _redis.expire(f"history:{user_id}", 3600) # Hết hạn sau 1h
+
+    return {
+        "answer": answer,
+        "history_count": len(history) // 2,
+        "storage": "redis" if USE_REDIS else "memory"
+    }
 
 
 # ──────────────────────────────────────────────────────────
-# HEALTH CHECKS — Phần quan trọng nhất của file này
+# HEALTH CHECKS
 # ──────────────────────────────────────────────────────────
 
 @app.get("/health")
 def health():
-    """
-    LIVENESS PROBE — "Agent có còn sống không?"
-
-    Cloud platform (Railway, Render, K8s) gọi endpoint này định kỳ.
-    Nếu trả về non-200 hoặc timeout → platform restart container.
-
-    Nên trả về:
-    - status: "ok" hoặc "degraded"
-    - uptime: seconds
-    - version: để biết đang chạy version nào
-    """
     uptime = round(time.time() - START_TIME, 1)
-
-    # Kiểm tra dependencies quan trọng
-    checks = {}
-
-    # Check memory (ví dụ đơn giản)
-    try:
-        import psutil
-        mem = psutil.virtual_memory()
-        checks["memory"] = {
-            "status": "ok" if mem.percent < 90 else "degraded",
-            "used_percent": mem.percent,
-        }
-    except ImportError:
-        checks["memory"] = {"status": "ok", "note": "psutil not installed"}
-
-    overall_status = "ok" if all(
-        v.get("status") == "ok" for v in checks.values()
-    ) else "degraded"
-
     return {
-        "status": overall_status,
+        "status": "ok",
         "uptime_seconds": uptime,
         "version": "1.0.0",
         "environment": os.getenv("ENVIRONMENT", "development"),
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "checks": checks,
     }
 
 
 @app.get("/ready")
 def ready():
-    """
-    READINESS PROBE — "Agent có sẵn sàng nhận request chưa?"
-
-    Load balancer dùng endpoint này để quyết định có route
-    traffic vào instance này không.
-
-    Trả về 503 khi:
-    - Đang khởi động (model chưa load xong)
-    - Đang shutdown
-    - Database/dependencies chưa connect
-    """
     if not _is_ready:
-        raise HTTPException(
-            status_code=503,
-            detail="Agent not ready. Check back in a few seconds.",
-        )
+        raise HTTPException(503, "Agent not ready")
     return {
         "ready": True,
         "in_flight_requests": _in_flight_requests,
+        "redis_connected": USE_REDIS
     }
 
 
@@ -173,13 +149,6 @@ def ready():
 # ──────────────────────────────────────────────────────────
 
 def handle_sigterm(signum, frame):
-    """
-    SIGTERM là signal platform gửi khi muốn dừng container.
-    Khác với SIGKILL (không thể catch được).
-
-    uvicorn bắt SIGTERM tự động và gọi lifespan shutdown.
-    Hàm này để log thêm thông tin.
-    """
     logger.info(f"Received signal {signum} — uvicorn will handle graceful shutdown")
 
 
@@ -194,6 +163,5 @@ if __name__ == "__main__":
         app,
         host="0.0.0.0",
         port=port,
-        # ✅ Cho phép graceful shutdown
         timeout_graceful_shutdown=30,
     )

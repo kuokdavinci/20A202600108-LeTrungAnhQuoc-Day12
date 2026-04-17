@@ -16,7 +16,7 @@
 ## 3. Cloud Deployment
 - [x] Deploy lên Railway (Thực tế): Đã có URL https://quoc-production.up.railway.app
 - [x] Test public URL: Đã hoạt động với endpoint /health
-- [x] (Optional) Đọc cloudbuild.yaml, service.yaml của GCP Cloud Run
+- [x] (Optional) Đọc cloudbuild.yaml, service.yaml của GCP Cloud Run: Đã hiểu cơ chế IaC qua render.yaml
 
 ## 4. API Security
 - [ ] Đọc app.py ở 04-api-gateway/develop, xác định API key check ở đâu

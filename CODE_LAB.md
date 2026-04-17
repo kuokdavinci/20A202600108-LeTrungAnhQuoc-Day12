@@ -313,10 +313,10 @@ cd ../production-cloud-run
 
 ###  Checkpoint 3
 
-- [ ] Deploy thành công lên ít nhất 1 platform
-- [ ] Có public URL hoạt động
-- [ ] Hiểu cách set environment variables trên cloud
-- [ ] Biết cách xem logs
+- [x] Deploy thành công lên ít nhất 1 platform
+- [x] Có public URL hoạt động
+- [x] Hiểu cách set environment variables trên cloud
+- [x] Biết cách xem logs
 
 ---
 
@@ -480,8 +480,7 @@ cd ../../05-scaling-reliability/develop
 @app.get("/health")
 def health():
     """Liveness probe — container còn sống không?"""
-    # TODO: Return 200 nếu process OK
-    pass
+    return {"status": "ok"}
 
 @app.get("/ready")
 def ready():
@@ -526,12 +525,17 @@ import sys
 
 def shutdown_handler(signum, frame):
     """Handle SIGTERM from container orchestrator"""
-    # TODO:
-    # 1. Stop accepting new requests
-    # 2. Finish current requests
-    # 3. Close connections
-    # 4. Exit
-    pass
+  try:
+        # Check Redis
+        r.ping()
+        # Check database
+        db.execute("SELECT 1")
+        return {"status": "ready"}
+    except:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not ready"}
+        )
 
 signal.signal(signal.SIGTERM, shutdown_handler)
 ```

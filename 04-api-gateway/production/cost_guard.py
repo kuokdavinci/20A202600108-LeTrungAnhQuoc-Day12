@@ -8,6 +8,8 @@ Mục tiêu: Tránh bill bất ngờ từ LLM API.
 
 Trong production: lưu trong Redis/DB, không phải in-memory.
 """
+import redis
+from datetime import datetime
 import time
 import logging
 from dataclasses import dataclass, field
