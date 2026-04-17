@@ -39,13 +39,18 @@ services:
     #   mountPath: /data
     #   sizeGB: 1
 
-  # ──────────────────────────────────────
+    # ──────────────────────────────────────
   # Redis (dùng Render Redis add-on)
   # ──────────────────────────────────────
   - type: redis
     name: agent-cache
     plan: free
     maxmemoryPolicy: allkeys-lru
+    # Thêm đoạn này vào bên dưới:
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: allow-all-for-lab
+
 
 # ============================================================
 # Cách deploy:

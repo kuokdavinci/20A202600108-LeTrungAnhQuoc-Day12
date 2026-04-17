@@ -201,7 +201,7 @@ Test:
 curl http://localhost/health
 
 # Agent endpoint
-curl http://localhost/ask -X POST \
+curl http://localhost/ask -X POST \doc
   -H "Content-Type: application/json" \
   -d '{"question": "Explain microservices"}'
 ```

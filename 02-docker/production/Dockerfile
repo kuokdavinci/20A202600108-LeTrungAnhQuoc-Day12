@@ -45,7 +45,7 @@ WORKDIR /app
 COPY --from=builder /root/.local /home/appuser/.local
 
 # Copy source code
-COPY 02-docker/production/main.py .
+COPY 02-docker/production/main.py main.py
 
 # Copy utils from project root
 RUN mkdir -p /app/utils
