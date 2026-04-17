@@ -30,18 +30,12 @@ _is_ready = False
 _in_flight_requests = 0
 
 # ── Redis Connection
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 try:
-    # Thêm timeout ngắn để không làm treo hế thống khi khởi động
-    r = redis.from_url(
-        settings.redis_url, 
-        decode_responses=True,
-        socket_connect_timeout=5,
-        socket_timeout=5
-    )
-    # Không ping ngay tại level module, để vào trong lifespan hoặc endpoint
-    logger.info("Attempting Redis connection...")
+    r = redis.from_url(REDIS_URL, decode_responses=True)
+    logger.info(f"Redis client initialized for {REDIS_URL}")
 except Exception as e:
-    logger.error(f"❌ Redis configuration error: {e}")
+    logger.error(f"❌ Redis init error: {e}")
     r = None
 
 # ── Auth (JWT) Setup
@@ -166,4 +160,6 @@ async def ask_agent(question: str, user_id: str = "default", token_data: dict = 
     }
 
 if __name__ == "__main__":
-    uvicorn.run(app, host=settings.host, port=settings.port)
+    current_port = int(os.environ.get("PORT", 8000))
+    logger.info(f"Starting agent on port {current_port}")
+    uvicorn.run(app, host="0.0.0.0", port=current_port)
