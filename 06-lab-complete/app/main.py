@@ -130,6 +130,14 @@ def check_cost_guard(user_id: str, cost: float):
     r.incrbyfloat(key, cost)
 
 # ── Endpoints
+@app.get("/")
+def index():
+    return {
+        "message": "Production AI Agent is running",
+        "endpoints": ["/health", "/ready", "/token", "/ask", "/docs"],
+        "developer": "Le Trung Anh Quoc"
+    }
+
 @app.get("/health")
 def health():
     return {"status": "ok", "uptime": round(time.time() - START_TIME, 1)}
