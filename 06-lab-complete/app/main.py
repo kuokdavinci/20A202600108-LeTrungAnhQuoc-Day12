@@ -115,19 +115,26 @@ async def process_request(request: Request, call_next):
 # ── Helpers
 def check_rate_limit(user_key: str):
     if not r: return
-    key = f"rate_limit:{user_key}"
-    count = r.incr(key)
-    if count == 1: r.expire(key, 60)
-    if count > settings.rate_limit_per_minute:
-        raise HTTPException(status_code=429, detail="Rate limit exceeded")
+    try:
+        key = f"rate_limit:{user_key}"
+        count = r.incr(key)
+        if count == 1: r.expire(key, 60)
+        if count > settings.rate_limit_per_minute:
+            raise HTTPException(status_code=429, detail="Rate limit exceeded")
+    except redis.exceptions.RedisError as e:
+        logger.warning(f"Rate limit check bypassed due to Redis error: {e}")
 
 def check_cost_guard(user_id: str, cost: float):
     if not r: return
-    key = f"cost:{user_id}:{datetime.now().strftime('%Y-%m')}"
-    total_cost = float(r.get(key) or 0.0)
-    if total_cost >= settings.daily_budget_usd:
-        raise HTTPException(status_code=402, detail="Budget exceeded")
-    r.incrbyfloat(key, cost)
+    try:
+        key = f"cost:{user_id}:{datetime.now().strftime('%Y-%m')}"
+        val = r.get(key)
+        total_cost = float(val) if val else 0.0
+        if total_cost >= settings.daily_budget_usd:
+            raise HTTPException(status_code=402, detail="Budget exceeded")
+        r.incrbyfloat(key, cost)
+    except redis.exceptions.RedisError as e:
+        logger.warning(f"Cost guard check bypassed due to Redis error: {e}")
 
 # ── Endpoints
 @app.get("/")
