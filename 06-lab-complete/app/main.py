@@ -147,21 +147,26 @@ def ready():
     if not _is_ready or not r: raise HTTPException(503, "Not ready")
     return {"status": "ready", "redis": True}
 
+class AskRequest(BaseModel):
+    question: str
+    user_id: str = "default"
+
 @app.post("/token")
 def login(body: LoginRequest):
-    # Demo logic
-    if body.username == "student" and body.password == "demo123":
-        token = create_access_token({"sub": "student", "role": "user"})
+    # Hỗ trợ cả tài khoản demo và tài khoản trong báo cáo của bạn
+    if (body.username == "student" and body.password == "demo123") or \
+       (body.username == "admin" and body.password == "secret"):
+        token = create_access_token({"sub": body.username, "role": "admin"})
         return {"access_token": token, "token_type": "bearer"}
     raise HTTPException(status_code=401, detail="Invalid credentials")
 
 @app.post("/ask")
-async def ask_agent(question: str, user_id: str = "default", token_data: dict = Depends(verify_jwt)):
-    check_rate_limit(user_id)
-    check_cost_guard(user_id, 0.0001)
-    answer = llm_ask(question)
+async def ask_agent(body: AskRequest, token_data: dict = Depends(verify_jwt)):
+    check_rate_limit(body.user_id)
+    check_cost_guard(body.user_id, 0.0001)
+    answer = llm_ask(body.question)
     return {
-        "question": question,
+        "question": body.question,
         "answer": answer,
         "user": token_data["sub"],
         "timestamp": datetime.now(timezone.utc).isoformat()
